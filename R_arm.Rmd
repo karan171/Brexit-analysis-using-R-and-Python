@@ -1,0 +1,151 @@
+---
+title: "ARM_Assignment_2"
+author: "Karan"
+date: '2022-09-29'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load_packages}
+library(tidyverse)
+library(arulesViz)
+library(arules)
+library(SnowballC)
+library(tokenizers)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r load_data, echo=FALSE}
+df <- read.csv('/Users/crazyk/twitter-data-brexit/TweetDataset_AntiBrexit_Jan-Mar2022.csv')
+head(df)
+```
+
+
+```{r }
+names(df)
+```
+
+
+```{r }
+colnames(df)[which(names(df) == "Hit.Sentence")] <- "Sentence"
+```
+
+
+```{r text_col}
+df_final <- df$Sentence
+head(df_final)
+```
+
+
+```{r corpus}
+corpus <- Corpus(VectorSource(df$Sentence))
+corpus[[1]]$content
+```
+
+
+```{r cleaning}
+toSpace = content_transformer(function(x, pattern) gsub(pattern," ",x) )
+corpus  <- tm_map(corpus,content_transformer(tolower))
+corpus <- tm_map(corpus, toSpace, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+corpus <- tm_map(corpus, removeWords, c("rt","qt"))
+corpus <- tm_map(corpus,removeWords,stopwords("english"))
+corpus  <- tm_map(corpus,removeNumbers)
+corpus <- tm_map(corpus,toSpace,"[^[:alnum:][:space:]]")
+corpus <- tm_map(corpus,removePunctuation)
+corpus <- tm_map(corpus,toSpace,'\\b\\w{1,2}\\b')
+corpus <- tm_map(corpus,stripWhitespace)
+```
+
+
+```{r cleaning}
+corpus[[2]]$content
+```
+
+
+```{r cleaning}
+df_final<- data.frame(text = sapply(corpus, paste, collapse = ""), stringsAsFactors = FALSE)
+```
+
+```{r}
+sum(is.na(df_final$text))
+```
+
+
+```{r cleaning}
+file.create("trans_tweets_new.csv")
+```
+
+
+```{r cleaning}
+trans_tweets <- "trans_tweets_new.csv"
+trans <- file(trans_tweets)
+tokens <- tokenizers::tokenize_words(df_final$text[1],simplify = TRUE)
+cat(unlist(str_squish(tokens)),"\n",file=trans,sep=",",append=TRUE)
+close(trans)
+
+trans <- file(trans_tweets,open="a")
+for(i in 2:nrow(df_final)){
+  tokens <- tokenizers::tokenize_words(df_final$text[i],simplify = TRUE)
+  cat(unlist(str_squish(tokens)),"\n",file=trans,sep=",",append = TRUE)
+}
+close(trans)
+```
+
+
+```{r cleaning}
+brex_trans <- read.transactions("trans_tweets_new.csv",rm.duplicates=FALSE,format="basket",sep=",",encoding = "UTF-8")
+#inspect(brex_trans)
+sample_trans <- sample(brex_trans,50)
+```
+
+```{r}
+summary(sample_trans)
+```
+
+
+```{r}
+tweet_rules <- arules::apriori(brex_trans, parameter = list(support=0.03,confidence=0.03,minlen=2,maxlen=6))
+inspect(tweet_rules)
+```
+
+```{r}
+sorted_rules_conf <- sort(tweet_rules,by='confidence',decreasing=TRUE)
+inspect(sorted_rules_conf[1:15])
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+sorted_rules_sup <- sort(tweet_rules,by='support',decreasing=TRUE)
+inspect(sorted_rules_sup[1:15])
+```
+
+
+```{r}
+sorted_rules_lift<- sort(tweet_rules,by='lift',decreasing=TRUE)
+inspect(sorted_rules_lift[1:25])
+```
+
+```{r}
+install.packages("tcltk")
+```
+
+
+```{r}
+plot(sorted_rules_lift[1:25],method="graph",shading="confidence")
+```
+```{r}
+plot(sorted_rules_conf[1:15], shading="order", control=list(main = "Two-key plot", 
+  col=rainbow(5)))
+```
+

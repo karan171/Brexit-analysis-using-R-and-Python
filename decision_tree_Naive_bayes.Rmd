@@ -1,0 +1,149 @@
+---
+title: "new_decison_tree"
+author: "Karan"
+date: '2022-10-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Libraries
+
+```{r}
+library(tidyverse)
+library(text2vec)
+library(rpart)
+library(plyr)
+library(caret)
+library(MLmetrics)
+library(naivebayes)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+#load cleaned_data
+```{r cars}
+df <- read.csv('/Users/crazyk/Cleaned_data.csv')
+df
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+names(df)
+```
+
+#rename columns
+```{r pressure, echo=FALSE}
+colnames(df)[which(names(df) == "Hit.Sentence")] <- "Sentence"
+```
+
+```{r}
+count(df$target)
+```
+#Map target to numeric values
+```{r}
+df$target <- mapvalues(df$target,from = c("pro","anti"),to = c(1,0))
+```
+
+#Take only a subset of data and create a dataframe
+```{r}
+df_anti <- filter(df,target==0) %>% slice(1:2000)
+df_pro <- filter(df,target==1) %>% slice(1:2000)
+
+new_df <- rbind(df_anti,df_pro)
+new_df <- new_df[,c("Sentence","target")]
+```
+
+#Split into test and train
+```{r}
+train.index <- createDataPartition(new_df$target, p = .8, list = FALSE)
+train <- new_df[ train.index,]
+test  <- new_df[-train.index,]
+```
+
+```{r}
+dim(train)
+```
+
+```{r}
+#train tfidf vectorization
+N = 3200
+it = itoken(train$Sentence[1:N], preprocess_function = tolower,
+tokenizer = word_tokenizer)
+v = create_vocabulary(it)
+#remove very common and uncommon words
+pruned_vocab = prune_vocabulary(v, term_count_min = 10,
+doc_proportion_max = 0.5, doc_proportion_min = 0.001)
+vectorizer = vocab_vectorizer(v)
+it = itoken(train$Sentence[1:N], preprocess_function = tolower,
+tokenizer = word_tokenizer)
+dtm = create_dtm(it, vectorizer)
+# get tf-idf matrix from bag-of-words matrix
+model_tfidf= TfIdf$new()
+dtm_tfidf = model_tfidf$fit_transform(dtm)
+df_train_idf <- as.data.frame(as.matrix(dtm_tfidf))
+df_train_idf$target_val <- train$target 
+```
+
+
+
+```{r}
+#transform test 
+N = 800
+it = itoken(test$Sentence[1:N], preprocess_function = tolower,
+tokenizer = word_tokenizer)
+dtm = create_dtm(it, vectorizer)
+# get tf-idf matrix from bag-of-words matrix
+dtm_tfidf = model_tfidf$transform(dtm)
+df_test_idf <- as.data.frame(as.matrix(dtm_tfidf))
+df_test_idf$target_val <- test$target 
+```
+
+```{r}
+#Decision tree model
+DT <- rpart(df_train_idf$target_val ~ ., data = df_train_idf, method="class")
+summary(DT)
+```
+
+```{r}
+#Decision tree prediction
+DT_Prediction <- predict(DT, df_test_idf, type="class")
+```
+
+
+```{r}
+#confusion matrix
+table(DT_Prediction,df_test_idf$target_val)
+```
+```{r}
+#score
+F1_Score(y_pred = DT_Prediction, y_true = df_test_idf$target_val)
+```
+```{r}
+#naive bayes model
+model <- naive_bayes(df_train_idf$target_val ~ ., data = df_train_idf,usekernel = F) 
+```
+
+
+```{r}
+#predict
+p1 <- predict(model, df_test_idf)
+```
+```{r}
+table(p1,df_test_idf$target_val)
+```
+```{r}
+F1_Score(y_pred = p1,y_true = df_test_idf$target_val)
+```
+```{r}
+df_test_idf
+```
+
